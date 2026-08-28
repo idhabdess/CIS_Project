@@ -1,0 +1,88 @@
+---
+- name: Audit CIS Global - Vérification de la conformité du système (10 Benchmarks)
+  hosts: all
+  become: yes
+  tasks:
+
+    # 1. SSH Root Login
+    - name: "CIS 1.1 - Vérifier si PermitRootLogin est désactivé"
+      command: grep "^PermitRootLogin no" /etc/ssh/sshd_config
+      register: check_root_login
+      ignore_errors: yes
+      changed_when: false
+
+    # 2. SSH Mots de passe vides interdits
+    - name: "CIS 1.2 - Vérifier si PermitEmptyPasswords est désactivé"
+      command: grep "^PermitEmptyPasswords no" /etc/ssh/sshd_config
+      register: check_empty_pass
+      ignore_errors: yes
+      changed_when: false
+
+    # 3. Permissions /etc/passwd
+    - name: "CIS 1.3 - Vérifier les permissions du fichier /etc/passwd"
+      stat:
+        path: /etc/passwd
+      register: stat_passwd
+
+    # 4. Permissions /etc/shadow
+    - name: "CIS 1.4 - Vérifier les permissions du fichier /etc/shadow"
+      stat:
+        path: /etc/shadow
+      register: stat_shadow
+
+    # 5. État du pare-feu UFW
+    - name: "CIS 1.5 - Vérifier si le pare-feu UFW est actif"
+      command: ufw status
+      register: check_ufw
+      ignore_errors: yes
+      changed_when: false
+
+    # 6. Vérification du paquet Telnet (ne doit pas être installé)
+    - name: "CIS 1.6 - Vérifier si telnet est absent"
+      command: dpkg -l telnet | grep "^ii"
+      register: check_telnet
+      ignore_errors: yes
+      changed_when: false
+
+    # 7. Permissions du fichier /etc/crontab
+    - name: "CIS 1.7 - Vérifier les permissions de /etc/crontab"
+      stat:
+        path: /etc/crontab
+      register: stat_crontab
+
+    # 8. Vérification du service auditd
+    - name: "CIS 1.8 - Vérifier si le service auditd est actif"
+      systemd:
+        name: auditd
+      register: check_auditd
+      ignore_errors: yes
+
+    # 9. Politique d'expiration des mots de passe (PASS_MAX_DAYS)
+    - name: "CIS 1.9 - Vérifier PASS_MAX_DAYS dans /etc/login.defs"
+      command: grep "^PASS_MAX_DAYS\s*90" /etc/login.defs
+      register: check_pass_days
+      ignore_errors: yes
+      changed_when: false
+
+    # 10. Présence d'un message d'avertissement légal (/etc/issue)
+    - name: "CIS 1.10 - Vérifier si le fichier /etc/issue n'est pas vide"
+      stat:
+        path: /etc/issue
+      register: stat_issue
+
+    # Rapport Synthétique Global
+    - name: Affichage du rapport d'audit global (10 Benchmarks)
+      debug:
+        msg:
+          - "================ RAPPORT D'AUDIT CIS GLOBAL ================"
+          - "1. SSH Root Login désactivé: {{ 'CONFORME' if check_root_login.rc == 0 else 'NON CONFORME' }}"
+          - "2. SSH Password Vide interdit: {{ 'CONFORME' if check_empty_pass.rc == 0 else 'NON CONFORME' }}"
+          - "3. Permissions /etc/passwd (<= 644): {{ 'CONFORME' if stat_passwd.stat.mode <= '0644' else 'NON CONFORME' }}"
+          - "4. Permissions /etc/shadow (<= 600): {{ 'CONFORME' if stat_shadow.stat.mode <= '0600' else 'NON CONFORME' }}"
+          - "5. Pare-feu UFW actif: {{ 'CONFORME' if 'active' in check_ufw.stdout or 'actif' in check_ufw.stdout else 'NON CONFORME' }}"
+          - "6. Paquet Telnet absent: {{ 'CONFORME' if check_telnet.rc != 0 else 'NON CONFORME' }}"
+          - "7. Permissions /etc/crontab (<= 600): {{ 'CONFORME' if stat_crontab.stat.mode <= '0600' else 'NON CONFORME' }}"
+          - "8. Service auditd actif: {{ 'CONFORME' if check_auditd.status.ActiveState == 'active' else 'NON CONFORME' }}"
+          - "9. Politique PASS_MAX_DAYS (<= 90): {{ 'CONFORME' if check_pass_days.rc == 0 else 'NON CONFORME' }}"
+          - "10. Message d'avertissement /etc/issue configuré: {{ 'CONFORME' if stat_issue.stat.size > 0 else 'NON CONFORME' }}"
+          - "============================================================"

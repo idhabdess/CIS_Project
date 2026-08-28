@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard CIS Hardening</title>
+    <!-- Chargement de Tailwind CSS pour le design -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans p-8">
+    
+    <!-- Formulaire d'ajout de serveur par mot de passe -->
+    <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+        <h2 class="text-xl font-semibold mb-4 text-slate-700">➕ Enregistrer un serveur (Mot de passe / Root)</h2>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <input type="text" id="input-nom" placeholder="Nom (ex: serveur-debian)" class="border border-slate-300 rounded-md p-2 text-sm">
+            <input type="text" id="input-ip" placeholder="Adresse IP (ex: 192.168.1.70)" class="border border-slate-300 rounded-md p-2 text-sm">
+            <input type="text" id="input-user" placeholder="Utilisateur (ex: root)" value="root" class="border border-slate-300 rounded-md p-2 text-sm">
+            <input type="password" id="input-pass" placeholder="Mot de passe SSH / Sudo" class="border border-slate-300 rounded-md p-2 text-sm">
+            <button onclick="ajouterServeurManuel()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-md shadow transition">
+                Ajouter le serveur
+            </button>
+        </div>
+    </div>
+    
+    <div class="max-w-5xl mx-auto">
+        <!-- En-tête -->
+        <header class="flex justify-between items-center bg-white p-6 rounded-lg shadow-md mb-8">
+            <div>
+                <h1 class="text-3xl font-bold text-slate-700">Plateforme de Hardening CIS</h1>
+                <p class="text-slate-500 text-sm mt-1">Audit et Remédiation Système - Multi-Serveurs</p>
+            </div>
+            
+            <!-- Sélecteur de machine et Bouton Supprimer -->
+            <div class="flex items-center space-x-2">
+                <label for="select-machine" class="text-sm font-semibold text-slate-600">Cible :</label>
+                <select id="select-machine" class="border border-slate-300 rounded-md p-2 bg-white text-sm shadow-sm">
+                    <option value="localhost">localhost (Interne)</option>
+                </select>
+                <button onclick="supprimerServeur()" class="text-red-500 hover:text-red-700 ml-2" title="Supprimer ce serveur">
+                    ❌
+                </button>
+            </div>
+            
+            <div class="flex space-x-3">
+                <button id="btn-audit" onclick="lancerAudit()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md shadow">
+                    🔍 Audit Global
+                </button>
+                <button id="btn-harden" onclick="lancerAction('/api/v1/harden/global', 'Durcissement en cours...')" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md shadow">
+                    🛡️ Durcir le Système
+                </button>
+                <button id="btn-rollback" onclick="lancerAction('/api/v1/rollback/ssh', 'Rollback SSH en cours...')" class="bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 px-4 rounded-md shadow">
+                    ↩️ Rollback SSH
+                </button>
+                <button id="btn-auto" onclick="toggleAutoMode()" class="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-md shadow transition">
+                    🤖 Mode Auto: OFF
+                </button>
+            </div>
+        </header>
+
+        <!-- Zone de chargement -->
+        <div id="loading" class="hidden text-center my-12">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mb-4"></div>
+            <p class="text-slate-600 font-medium">Exécution en cours... Veuillez patienter.</p>
+        </div>
+
+        <!-- Zone des résultats -->
+        <div id="resultats-container" class="hidden bg-white p-6 rounded-lg shadow-md">
+            <div class="flex justify-between items-center mb-6 border-b pb-4">
+                <h2 class="text-2xl font-semibold">Rapport de Conformité</h2>
+                <div class="text-right">
+                    <span id="score-text" class="text-3xl font-bold text-blue-600">--/10</span>
+                    <p class="text-xs text-slate-500 uppercase tracking-wide">Score Global</p>
+                </div>
+            </div>
+            <ul id="liste-controles" class="space-y-3">
+                <!-- Les résultats seront injectés ici par JavaScript -->
+            </ul>
+        </div>
+    </div>
+
+    <!-- Script de communication avec l'API -->
+    <script>
+        // --- CHARGEMENT DYNAMIQUE DE L'INVENTAIRE ---
+        async function chargerServeurs() {
+            try {
+                const reponse = await fetch('/api/v1/servers', {
+                    method: 'GET',
+                    headers: { 'X-API-Key': 'cis_secret_key_2026' }
+                });
+
+                if (!reponse.ok) throw new Error("Impossible de charger l'inventaire");
+
+                const data = await reponse.json();
+                const select = document.getElementById('select-machine');
+                
+                // Mémoriser la sélection actuelle si possible
+                const selectionActuelle = select.value;
+                
+                select.innerHTML = ''; // Vider le menu
+                
+                data.serveurs.forEach(serveur => {
+                    const option = document.createElement('option');
+                    option.value = serveur.nom;
+                    option.innerText = serveur.label;
+                    select.appendChild(option);
+                });
+
+                // Restaurer la sélection
+                if (data.serveurs.some(s => s.nom === selectionActuelle)) {
+                    select.value = selectionActuelle;
+                }
+            } catch (erreur) {
+                console.error("Erreur de synchronisation :", erreur);
+            }
+        }
+
+        // On déclenche le chargement dès l'ouverture de la page
+        document.addEventListener('DOMContentLoaded', chargerServeurs);
+
+        function getMachineCiblee() {
+            const select = document.getElementById('select-machine');
+            return select ? select.value : "localhost";
+        }
+
+        async function lancerAudit() {
+            const machine = getMachineCiblee();
+            
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('resultats-container').classList.add('hidden');
+            document.getElementById('btn-audit').disabled = true;
+            document.getElementById('btn-audit').classList.add('opacity-50');
+
+            try {
+                // Utilisation des backticks (`) pour interpoler la variable machine
+                const reponse = await fetch(`/api/v1/audit/global?machine=${machine}`, {
+                    method: 'POST',
+                    headers: { 'X-API-Key': 'cis_secret_key_2026' }
+                });
+
+                if (!reponse.ok) throw new Error(`Erreur HTTP: ${reponse.status}`);
+
+                const data = await reponse.json();
+                afficherResultats(data);
+
+            } catch (erreur) {
+                alert("Erreur lors de la communication avec l'API : " + erreur.message);
+            } finally {
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('btn-audit').disabled = false;
+                document.getElementById('btn-audit').classList.remove('opacity-50');
+            }
+        }
+
+        function afficherResultats(data) {
+            document.getElementById('resultats-container').classList.remove('hidden');
+            document.getElementById('score-text').innerText = data.score;
+            
+            const liste = document.getElementById('liste-controles');
+            liste.innerHTML = ''; 
+
+            data.resultats.forEach(item => {
+                const estConforme = item.statut === "CONFORME";
+                const bgColor = estConforme ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200';
+                const badgeColor = estConforme ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+                const icone = estConforme ? '✓' : '✗';
+
+                const li = document.createElement('li');
+                li.className = `flex justify-between items-center p-4 border rounded-md ${bgColor}`;
+                li.innerHTML = `
+                    <span class="font-medium text-slate-700">${item.controle}</span>
+                    <span class="px-3 py-1 rounded-full text-xs font-bold ${badgeColor}">
+                        ${icone} ${item.statut}
+                    </span>
+                `;
+                liste.appendChild(li);
+            });
+        }
+
+        async function lancerAction(url, messageChargement) {
+            const machine = getMachineCiblee();
+            const loadingDiv = document.getElementById('loading');
+            const resultatsContainer = document.getElementById('resultats-container');
+            
+            loadingDiv.classList.remove('hidden');
+            loadingDiv.querySelector('p').innerText = messageChargement;
+            resultatsContainer.classList.add('hidden');
+
+            try {
+                // Utilisation des backticks (`)
+                const reponse = await fetch(`${url}?machine=${machine}`, {
+                    method: 'POST',
+                    headers: { 'X-API-Key': 'cis_secret_key_2026' }
+                });
+
+                if (!reponse.ok) throw new Error(`Erreur HTTP: ${reponse.status}`);
+                
+                const data = await reponse.json();
+                await lancerAudit(); 
+                alert(data.message);
+
+            } catch (erreur) {
+                alert("Erreur lors de l'exécution : " + erreur.message);
+                loadingDiv.classList.add('hidden');
+            }
+        }
+
+        let autoModeActif = false;
+        async function toggleAutoMode() {
+            autoModeActif = !autoModeActif;
+            try {
+                const reponse = await fetch(`/api/v1/auto/toggle?activer=${autoModeActif}`, {
+                    method: 'POST',
+                    headers: { 'X-API-Key': 'cis_secret_key_2026' }
+                });
+
+                if (!reponse.ok) throw new Error("Erreur lors du changement de mode");
+
+                const data = await reponse.json();
+                const btn = document.getElementById('btn-auto');
+
+                if (data.etat) {
+                    btn.innerText = "🤖 Mode Auto: ON";
+                    btn.className = "bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md shadow transition animate-pulse";
+                    alert("Mode automatique activé : un audit sera réalisé toutes les 45 secondes avec remédiation automatique en cas de besoin.");
+                } else {
+                    btn.innerText = "🤖 Mode Auto: OFF";
+                    btn.className = "bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-md shadow transition";
+                    alert("Mode automatique désactivé.");
+                }
+            } catch (erreur) {
+                alert("Erreur : " + erreur.message);
+                autoModeActif = !autoModeActif; 
+            }
+        }
+
+        async function ajouterServeurManuel() {
+            const nom = document.getElementById('input-nom').value.trim();
+            const ip = document.getElementById('input-ip').value.trim();
+            const utilisateur = document.getElementById('input-user').value.trim();
+            const password = document.getElementById('input-pass').value.trim();
+
+            if (!nom || !ip || !password) {
+                alert("Veuillez remplir le nom, l'adresse IP et le mot de passe.");
+                return;
+            }
+
+            try {
+                const reponse = await fetch('/api/v1/servers/add', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': 'cis_secret_key_2026'
+                    },
+                    body: JSON.stringify({
+                        nom: nom,
+                        ip: ip,
+                        utilisateur: utilisateur || "root",
+                        password: password
+                    })
+                });
+
+                if (!reponse.ok) throw new Error("Erreur lors de l'enregistrement du serveur");
+
+                const data = await reponse.json();
+                alert(data.message);
+
+                // On recharge proprement la liste depuis le fichier via l'API
+                await chargerServeurs();
+                document.getElementById('select-machine').value = nom;
+
+                // Nettoyage des champs
+                document.getElementById('input-nom').value = '';
+                document.getElementById('input-ip').value = '';
+                document.getElementById('input-pass').value = '';
+
+            } catch (erreur) {
+                alert("Erreur : " + erreur.message);
+            }
+        }
+
+        async function supprimerServeur() {
+            const select = document.getElementById('select-machine');
+            const nom_serveur = select.value;
+
+            if (nom_serveur === "localhost") {
+                alert("Vous ne pouvez pas supprimer le serveur local.");
+                return;
+            }
+
+            if (!confirm(`Voulez-vous vraiment supprimer le serveur ${nom_serveur} ?`)) return;
+
+            try {
+                const reponse = await fetch(`/api/v1/servers/${nom_serveur}`, {
+                    method: 'DELETE',
+                    headers: { 'X-API-Key': 'cis_secret_key_2026' }
+                });
+
+                if (!reponse.ok) throw new Error("Erreur lors de la suppression");
+
+                const data = await reponse.json();
+                alert(data.message);
+                
+                // On recharge la liste à jour
+                await chargerServeurs();
+            } catch (erreur) {
+                alert("Erreur : " + erreur.message);
+            }
+        }
+    </script>
+</body>
+</html>

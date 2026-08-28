@@ -1,0 +1,27 @@
+---
+- name: Rollback SSH - Restauration des configurations par défaut (NON SÉCURISÉ)
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: "Rollback 1.1 - Autoriser root à se connecter (PermitRootLogin yes)"
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PermitRootLogin'
+        line: 'PermitRootLogin yes'
+        state: present
+      notify: Redémarrer SSH
+
+    - name: "Rollback 1.2 - Autoriser les mots de passe vides (PermitEmptyPasswords yes)"
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PermitEmptyPasswords'
+        line: 'PermitEmptyPasswords yes'
+        state: present
+      notify: Redémarrer SSH
+
+  handlers:
+    - name: Redémarrer SSH
+      service:
+        name: ssh
+        state: restarted

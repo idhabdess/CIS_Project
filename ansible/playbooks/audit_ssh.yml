@@ -1,0 +1,17 @@
+---
+- name: Audit CIS - Vérification de la configuration SSH
+  hosts: all
+  become: yes # Permet d'exécuter la commande avec les droits administrateur (sudo)
+  tasks:
+    - name: Vérifier si PermitRootLogin est désactivé
+      command: grep "^PermitRootLogin no" /etc/ssh/sshd_config
+      register: ssh_root_check
+      ignore_errors: yes
+      changed_when: false
+
+    - name: Résultat de l'audit
+      debug:
+        msg: 
+          - "Statut: {{ 'CONFORME' if ssh_root_check.rc == 0 else 'NON CONFORME' }}"
+          - "Détail: Root login via SSH n'est pas bloqué."
+      when: ssh_root_check.rc != 0
