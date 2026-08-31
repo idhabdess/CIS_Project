@@ -5,13 +5,13 @@ import asyncio
 from fastapi import FastAPI, Depends, HTTPException, Security, BackgroundTasks
 from fastapi.security import APIKeyHeader
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
 
 os.environ["ANSIBLE_HOST_KEY_CHECKING"] = "False"
+
 # 1. INITIALISATION DE L'APPLICATION
 app = FastAPI(
-    title="Plateforme de Hardening CIS",
-    description="API centralisée pour l'audit et le durcissement",
+    title="Agent de Hardening CIS - Local",
+    description="API de l'agent local pour l'audit et le durcissement du système hôte",
     version="1.0.0"
 )
 
@@ -33,42 +33,38 @@ def executer_audit_interne():
         "ansible-playbook", 
         "-i", "ansible/inventory.ini", 
         "ansible/playbooks/audit_cis_global.yml",
-        "--extra-vars", "ansible_become_pass=emsi"
+        "--limit", "localhost"
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
-    pattern = r"(\d+\.\s[^:]+):\s(NON CONFORME|CONFORME)"
+    
+    pattern = r"((?:\d+\.)?\d+\.\s[^:]+):\s(NON CONFORME|CONFORME)"
     matches = re.findall(pattern, result.stdout)
     score = sum(1 for _, statut in matches if statut == "CONFORME")
-    return score
+    total_regles = len(matches)
+    return score, total_regles
 
 async def boucle_surveillance_automatique():
     global AUTO_REMEDIATION_ACTIVE
     while AUTO_REMEDIATION_ACTIVE:
-        print("[AUTO] Lancement de l'audit automatique...")
-        score = executer_audit_interne()
-        print(f"[AUTO] Score actuel : {score}/10")
+        print("[AUTO] Lancement de l'audit automatique local...")
+        score, total = executer_audit_interne()
+        print(f"[AUTO] Score actuel : {score}/{total}")
         
-        if score < 10:
+        # Si le score n'est pas parfait, on durcit
+        if score < total and total > 0:
             print("[AUTO] Écart détecté ! Lancement de la remédiation automatique...")
             cmd_harden = [
                 "ansible-playbook", 
                 "-i", "ansible/inventory.ini", 
                 "ansible/playbooks/harden_cis_global.yml",
-                "--extra-vars", "ansible_become_pass=emsi"
+                "--limit", "localhost"
             ]
             subprocess.run(cmd_harden, capture_output=True, text=True)
             print("[AUTO] Remédiation terminée.")
             
         await asyncio.sleep(45)
 
-# --- 4. MODÈLES DE DONNÉES ---
-class ServeurModel(BaseModel):
-    nom: str
-    ip: str
-    utilisateur: str = "root"
-    password: str
-
-# --- 5. ROUTES DE L'API ---
+# --- 4. ROUTES DE L'INTERFACE ---
 
 @app.get("/")
 def lire_interface():
@@ -87,93 +83,7 @@ def toggle_auto_mode(activer: bool, background_tasks: BackgroundTasks):
     status_str = "activé" if activer else "désactivé"
     return {"message": f"Mode automatique {status_str} avec succès", "etat": AUTO_REMEDIATION_ACTIVE}
 
-# --- GESTION DES SERVEURS (AJOUT, LECTURE, SUPPRESSION) ---
-
-@app.get("/api/v1/servers", dependencies=[Depends(verify_api_key)])
-def lister_serveurs():
-    """Lit l'inventaire Ansible et retourne la liste des serveurs enregistrés."""
-    inventory_path = "ansible/inventory.ini"
-    serveurs_trouves = [{"nom": "localhost", "label": "localhost (Interne)"}]
-    
-    if os.path.exists(inventory_path):
-        with open(inventory_path, "r") as f:
-            for ligne in f:
-                ligne = ligne.strip()
-                if ligne and not ligne.startswith(("[", "#")) and "ansible_host=" in ligne:
-                    nom_serveur = ligne.split()[0]
-                    if nom_serveur != "localhost":
-                        serveurs_trouves.append({"nom": nom_serveur, "label": nom_serveur})
-                        
-    return {"serveurs": serveurs_trouves}
-
-@app.post("/api/v1/servers/add", dependencies=[Depends(verify_api_key)])
-def ajouter_serveur(serveur: ServeurModel):
-    inventory_path = "ansible/inventory.ini"
-    nouvelle_ligne = (
-        f"{serveur.nom} ansible_host={serveur.ip} "
-        f"ansible_user={serveur.utilisateur} "
-        f"ansible_password='{serveur.password}' "
-        f"ansible_become_password='{serveur.password}'\n"
-    )
-    try:
-        if not os.path.exists(inventory_path):
-            with open(inventory_path, "w") as f:
-                f.write("[serveurs_production]\n")
-        with open(inventory_path, "a") as f:
-            f.write(nouvelle_ligne)
-        return {"message": f"Serveur '{serveur.nom}' ({serveur.ip}) ajouté avec succès !"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur d'écriture : {str(e)}")
-
-@app.delete("/api/v1/servers/{nom_serveur}", dependencies=[Depends(verify_api_key)])
-def supprimer_serveur(nom_serveur: str):
-    """Supprime un serveur de l'inventaire Ansible."""
-    if nom_serveur == "localhost":
-        raise HTTPException(status_code=400, detail="Impossible de supprimer localhost")
-        
-    inventory_path = "ansible/inventory.ini"
-    if not os.path.exists(inventory_path):
-        raise HTTPException(status_code=404, detail="Inventaire introuvable")
-
-    with open(inventory_path, "r") as f:
-        lignes = f.readlines()
-
-    with open(inventory_path, "w") as f:
-        for ligne in lignes:
-            if not ligne.startswith(nom_serveur + " "):
-                f.write(ligne)
-                
-    return {"message": f"Serveur '{nom_serveur}' supprimé de l'inventaire."}
-
-# --- ACTIONS ANSIBLE (AUDIT, HARDENING, ROLLBACK) ---
-"""
-@app.post("/api/v1/audit/global", dependencies=[Depends(verify_api_key)])
-def run_global_audit(machine: str = "localhost"):
-    cmd = [
-        "ansible-playbook", 
-        "-i", "ansible/inventory.ini", 
-        "ansible/playbooks/audit_cis_global.yml",
-        "--limit", machine,
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    pattern = r"(\d+\.\s[^:]+):\s(NON CONFORME|CONFORME)"
-    matches = re.findall(pattern, result.stdout)
-    score_conforme = 0
-    details_audit = []
-    for regle, statut in matches:
-        if statut == "CONFORME":
-            score_conforme += 1
-        details_audit.append({
-            "controle": regle.strip(),
-            "statut": statut
-        })
-    return {
-        "titre": f"Rapport d'Audit - {machine}",
-        "score": f"{score_conforme}/10",
-        "taux_conformite": f"{(score_conforme / 10) * 100}%",
-        "resultats": details_audit
-    }
-"""
+# --- 5. ACTIONS ANSIBLE LOCALES (AUDIT, HARDENING, ROLLBACK) ---
 
 @app.post("/api/v1/audit/global", dependencies=[Depends(verify_api_key)])
 def run_global_audit(machine: str = "localhost"):
@@ -181,22 +91,12 @@ def run_global_audit(machine: str = "localhost"):
         "ansible-playbook", 
         "-i", "ansible/inventory.ini", 
         "ansible/playbooks/audit_cis_global.yml",
-        "--limit", machine,
-	"--extra-vars", "ansible_become_flags='-H -S -p Password:'"
+        "--limit", machine
     ]
-    
-    # On lance la commande
     result = subprocess.run(cmd, capture_output=True, text=True)
     
-    # --- DEBUG : Affichage des erreurs dans le terminal ---
-    print(f"--- LOGS ANSIBLE POUR {machine} ---")
-    if result.stderr:
-        print("ERREUR :", result.stderr)
-    print("SORTIE :", result.stdout)
-    print("-----------------------------------")
-    
-    # Analyse des résultats
-    pattern = r"(\d+\.\s[^:]+):\s(NON CONFORME|CONFORME)"
+    # Regex dynamique
+    pattern = r"((?:\d+\.)?\d+\.\s[^:]+):\s(NON CONFORME|CONFORME)"
     matches = re.findall(pattern, result.stdout)
     
     score_conforme = 0
@@ -209,11 +109,15 @@ def run_global_audit(machine: str = "localhost"):
             "controle": regle.strip(),
             "statut": statut
         })
+    
+    # Protection anti-division par zéro
+    total_regles = len(matches) if len(matches) > 0 else 1
+    taux = (score_conforme / total_regles) * 100
         
     return {
-        "titre": f"Rapport d'Audit - {machine}",
-        "score": f"{score_conforme}/10",
-        "taux_conformite": f"{(score_conforme / 10) * 100}%",
+        "titre": f"Rapport d'Audit Local",
+        "score": f"{score_conforme}/{len(matches)}",
+        "taux_conformite": f"{taux:.2f}%", 
         "resultats": details_audit
     }
 
@@ -223,20 +127,18 @@ def run_global_hardening(machine: str = "localhost"):
         "ansible-playbook", 
         "-i", "ansible/inventory.ini", 
         "ansible/playbooks/harden_cis_global.yml",
-        "--limit", machine,
-        "--extra-vars", "ansible_become_pass=emsi"
+        "--limit", machine
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
-    return {"message": f"Durcissement exécuté avec succès sur {machine}", "details": result.stdout}
+    return {"message": f"Durcissement exécuté avec succès sur le système local", "details": result.stdout}
 
-@app.post("/api/v1/rollback/ssh", dependencies=[Depends(verify_api_key)])
-def run_ssh_rollback(machine: str = "localhost"):
+@app.post("/api/v1/rollback/global", dependencies=[Depends(verify_api_key)])
+def run_global_rollback(machine: str = "localhost"):
     cmd = [
         "ansible-playbook", 
         "-i", "ansible/inventory.ini", 
-        "ansible/playbooks/rollback_ssh.yml",
-        "--limit", machine,
-        "--extra-vars", "ansible_become_pass=emsi"
+        "ansible/playbooks/rollback_cis_global.yml",
+        "--limit", machine
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
-    return {"message": f"Rollback SSH exécuté sur {machine}", "details": result.stdout}
+    return {"message": f"Restauration exécutée avec succès sur le système local", "details": result.stdout}

@@ -1,0 +1,23 @@
+---
+- name: "Remédier 5.1 à 5.6 - Sécuriser les dossiers de tâches planifiées (Cron)"
+  file:
+    path: "{{ item }}"
+    mode: '0700'
+    owner: root
+    group: root
+  loop: ['/etc/cron.hourly', '/etc/cron.daily', '/etc/cron.weekly', '/etc/cron.monthly', '/etc/cron.d']
+  ignore_errors: yes
+
+- name: "Remédier 5.7 à 5.9 - Politique des mots de passe (/etc/login.defs)"
+  lineinfile:
+    path: /etc/login.defs
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  loop:
+    - { regexp: '^PASS_MAX_DAYS', line: 'PASS_MAX_DAYS   90' }
+    - { regexp: '^PASS_MIN_DAYS', line: 'PASS_MIN_DAYS   7' }
+    - { regexp: '^PASS_WARN_AGE', line: 'PASS_WARN_AGE   7' }
+
+- name: "Remédier 5.10 - Verrouillage des comptes inactifs après 30 jours"
+  command: useradd -D -f 30

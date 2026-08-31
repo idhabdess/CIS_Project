@@ -1,0 +1,51 @@
+---
+- name: "CIS 2.1 - PermitRootLogin désactivé"
+  command: grep "^PermitRootLogin no" /etc/ssh/sshd_config
+  register: check_root_login
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 2.2 - PermitEmptyPasswords désactivé"
+  command: grep "^PermitEmptyPasswords no" /etc/ssh/sshd_config
+  register: check_empty_pass
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 2.3 - Paquet Telnet absent"
+  command: dpkg -l telnet | grep "^ii"
+  register: check_telnet
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 2.4 - Paquet RSH absent"
+  command: dpkg -l rsh-client | grep "^ii"
+  register: check_rsh
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 2.5 - Paquet NIS absent"
+  command: dpkg -l nis | grep "^ii"
+  register: check_nis
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 2.6 - Paquet LDAP client absent"
+  command: dpkg -l ldap-utils | grep "^ii"
+  register: check_ldap
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 2.7 - Service xinetd absent"
+  command: dpkg -l xinetd | grep "^ii"
+  register: check_xinetd
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 2.8 - Protocoles de temps (Chrony/NTP)"
+  shell: dpkg -l chrony | grep "^ii"
+  register: check_chrony
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 2.9 - SSH Client Alive Interval"
+  command: grep "^ClientAliveInterval 300" /etc/ssh/sshd_config
+  register: check_alive_interval
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 2.10 - SSH MaxAuthTries <= 4"
+  command: grep "^MaxAuthTries 4" /etc/ssh/sshd_config
+  register: check_max_auth
+  ignore_errors: yes
+  changed_when: false

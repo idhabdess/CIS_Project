@@ -1,88 +1,86 @@
 ---
-- name: Audit CIS Global - Vérification de la conformité du système (10 Benchmarks)
+- name: Audit CIS Global - Vérification de la conformité du système
   hosts: all
   become: yes
   tasks:
 
-    # 1. SSH Root Login
-    - name: "CIS 1.1 - Vérifier si PermitRootLogin est désactivé"
-      command: grep "^PermitRootLogin no" /etc/ssh/sshd_config
-      register: check_root_login
-      ignore_errors: yes
-      changed_when: false
+    - name: "Section 1 - Setup & Permissions Système"
+      include_tasks: ../tasks/audit_01_setup.yml
 
-    # 2. SSH Mots de passe vides interdits
-    - name: "CIS 1.2 - Vérifier si PermitEmptyPasswords est désactivé"
-      command: grep "^PermitEmptyPasswords no" /etc/ssh/sshd_config
-      register: check_empty_pass
-      ignore_errors: yes
-      changed_when: false
+    - name: "Section 2 - Services Essentiels & SSH"
+      include_tasks: ../tasks/audit_02_services.yml
 
-    # 3. Permissions /etc/passwd
-    - name: "CIS 1.3 - Vérifier les permissions du fichier /etc/passwd"
-      stat:
-        path: /etc/passwd
-      register: stat_passwd
+    - name: "Section 3 - Configuration Réseau"
+      include_tasks: ../tasks/audit_03_network.yml
 
-    # 4. Permissions /etc/shadow
-    - name: "CIS 1.4 - Vérifier les permissions du fichier /etc/shadow"
-      stat:
-        path: /etc/shadow
-      register: stat_shadow
+    - name: "Section 4 - Logging & Auditing"
+      include_tasks: ../tasks/audit_04_logging.yml
 
-    # 5. État du pare-feu UFW
-    - name: "CIS 1.5 - Vérifier si le pare-feu UFW est actif"
-      command: ufw status
-      register: check_ufw
-      ignore_errors: yes
-      changed_when: false
+    - name: "Section 5 - Contrôle d'accès & Mots de passe"
+      include_tasks: ../tasks/audit_05_access.yml
 
-    # 6. Vérification du paquet Telnet (ne doit pas être installé)
-    - name: "CIS 1.6 - Vérifier si telnet est absent"
-      command: dpkg -l telnet | grep "^ii"
-      register: check_telnet
-      ignore_errors: yes
-      changed_when: false
-
-    # 7. Permissions du fichier /etc/crontab
-    - name: "CIS 1.7 - Vérifier les permissions de /etc/crontab"
-      stat:
-        path: /etc/crontab
-      register: stat_crontab
-
-    # 8. Vérification du service auditd
-    - name: "CIS 1.8 - Vérifier si le service auditd est actif"
-      systemd:
-        name: auditd
-      register: check_auditd
-      ignore_errors: yes
-
-    # 9. Politique d'expiration des mots de passe (PASS_MAX_DAYS)
-    - name: "CIS 1.9 - Vérifier PASS_MAX_DAYS dans /etc/login.defs"
-      command: grep "^PASS_MAX_DAYS\s*90" /etc/login.defs
-      register: check_pass_days
-      ignore_errors: yes
-      changed_when: false
-
-    # 10. Présence d'un message d'avertissement légal (/etc/issue)
-    - name: "CIS 1.10 - Vérifier si le fichier /etc/issue n'est pas vide"
-      stat:
-        path: /etc/issue
-      register: stat_issue
-
-    # Rapport Synthétique Global
-    - name: Affichage du rapport d'audit global (10 Benchmarks)
+    - name: Affichage du rapport d'audit global
       debug:
         msg:
           - "================ RAPPORT D'AUDIT CIS GLOBAL ================"
-          - "1. SSH Root Login désactivé: {{ 'CONFORME' if check_root_login.rc == 0 else 'NON CONFORME' }}"
-          - "2. SSH Password Vide interdit: {{ 'CONFORME' if check_empty_pass.rc == 0 else 'NON CONFORME' }}"
-          - "3. Permissions /etc/passwd (<= 644): {{ 'CONFORME' if stat_passwd.stat.mode <= '0644' else 'NON CONFORME' }}"
-          - "4. Permissions /etc/shadow (<= 600): {{ 'CONFORME' if stat_shadow.stat.mode <= '0600' else 'NON CONFORME' }}"
-          - "5. Pare-feu UFW actif: {{ 'CONFORME' if 'active' in check_ufw.stdout or 'actif' in check_ufw.stdout else 'NON CONFORME' }}"
-          - "6. Paquet Telnet absent: {{ 'CONFORME' if check_telnet.rc != 0 else 'NON CONFORME' }}"
-          - "7. Permissions /etc/crontab (<= 600): {{ 'CONFORME' if stat_crontab.stat.mode <= '0600' else 'NON CONFORME' }}"
-          - "8. Service auditd actif: {{ 'CONFORME' if check_auditd.status.ActiveState == 'active' else 'NON CONFORME' }}"
-          - "9. Politique PASS_MAX_DAYS (<= 90): {{ 'CONFORME' if check_pass_days.rc == 0 else 'NON CONFORME' }}"
-          - "10. Message d'avertissement /etc/issue configuré: {{ 'CONFORME' if stat_issue.stat.size > 0 else 'NON CONFORME' }}"
+          
+          # SECTION 1 - Setup & Permissions (10 règles)
+          - "1.3. Permissions /etc/passwd: {{ 'CONFORME' if stat_passwd.stat is defined and stat_passwd.stat.mode is defined and stat_passwd.stat.mode <= '0644' else 'NON CONFORME' }}"
+          - "1.4. Permissions /etc/shadow: {{ 'CONFORME' if stat_shadow.stat is defined and stat_shadow.stat.mode is defined and stat_shadow.stat.mode <= '0600' else 'NON CONFORME' }}"
+          - "1.10. Fichier /etc/issue non vide: {{ 'CONFORME' if stat_issue.stat is defined and stat_issue.stat.size is defined and stat_issue.stat.size > 0 else 'NON CONFORME' }}"
+          - "1.11. Permissions /etc/gshadow: {{ 'CONFORME' if stat_gshadow.stat is defined and stat_gshadow.stat.mode is defined and stat_gshadow.stat.mode <= '0640' else 'NON CONFORME' }}"
+          - "1.14. Permissions /boot/grub/grub.cfg: {{ 'CONFORME' if stat_grub.stat is defined and stat_grub.stat.mode is defined and stat_grub.stat.mode <= '0600' else 'NON CONFORME' }}"
+          - "1.16. Restriction core dumps: {{ 'CONFORME' if check_suid_dumpable.stdout is defined and '0' in check_suid_dumpable.stdout else 'NON CONFORME' }}"
+          - "1.17. Activation d'AppArmor: {{ 'CONFORME' if check_apparmor.rc is defined and check_apparmor.rc == 0 else 'NON CONFORME' }}"
+          - "1.18. Présence de /etc/motd: {{ 'CONFORME' if stat_motd.stat is defined and stat_motd.stat.exists else 'NON CONFORME' }}"
+          - "1.19. Permissions /etc/motd: {{ 'CONFORME' if stat_motd_perms.stat is defined and stat_motd_perms.stat.mode is defined and stat_motd_perms.stat.mode <= '0644' else 'NON CONFORME' }}"
+          - "1.20. Permissions /etc/issue.net: {{ 'CONFORME' if stat_issue_net.stat is defined and stat_issue_net.stat.mode is defined and stat_issue_net.stat.mode <= '0644' else 'NON CONFORME' }}"
+
+          # SECTION 2 - Services (10 règles)
+          - "2.1. SSH Root Login désactivé: {{ 'CONFORME' if check_root_login.rc is defined and check_root_login.rc == 0 else 'NON CONFORME' }}"
+          - "2.2. SSH Password Vide interdit: {{ 'CONFORME' if check_empty_pass.rc is defined and check_empty_pass.rc == 0 else 'NON CONFORME' }}"
+          - "2.3. Paquet Telnet absent: {{ 'CONFORME' if check_telnet.rc is defined and check_telnet.rc != 0 else 'NON CONFORME' }}"
+          - "2.4. Paquet RSH absent: {{ 'CONFORME' if check_rsh.rc is defined and check_rsh.rc != 0 else 'NON CONFORME' }}"
+          - "2.5. Paquet NIS absent: {{ 'CONFORME' if check_nis.rc is defined and check_nis.rc != 0 else 'NON CONFORME' }}"
+          - "2.6. Paquet LDAP client absent: {{ 'CONFORME' if check_ldap.rc is defined and check_ldap.rc != 0 else 'NON CONFORME' }}"
+          - "2.7. Service xinetd absent: {{ 'CONFORME' if check_xinetd.rc is defined and check_xinetd.rc != 0 else 'NON CONFORME' }}"
+          - "2.8. Protocoles de temps (Chrony/NTP): {{ 'CONFORME' if check_chrony.rc is defined and check_chrony.rc == 0 else 'NON CONFORME' }}"
+          - "2.9. SSH Client Alive Interval: {{ 'CONFORME' if check_alive_interval.rc is defined and check_alive_interval.rc == 0 else 'NON CONFORME' }}"
+          - "2.10. SSH MaxAuthTries (<= 4): {{ 'CONFORME' if check_max_auth.rc is defined and check_max_auth.rc == 0 else 'NON CONFORME' }}"
+
+          # SECTION 3 - Configuration Réseau (10 règles)
+          - "3.1. Pare-feu UFW actif: {{ 'CONFORME' if check_ufw.stdout is defined and ('active' in check_ufw.stdout or 'actif' in check_ufw.stdout) else 'NON CONFORME' }}"
+          - "3.2. IP Forwarding désactivé: {{ 'CONFORME' if check_ip_forward.stdout is defined and '0' in check_ip_forward.stdout else 'NON CONFORME' }}"
+          - "3.3. Ignorer redirections ICMP: {{ 'CONFORME' if check_accept_redirects.stdout is defined and '0' in check_accept_redirects.stdout else 'NON CONFORME' }}"
+          - "3.4. Source Routing désactivé: {{ 'CONFORME' if check_source_route.stdout is defined and '0' in check_source_route.stdout else 'NON CONFORME' }}"
+          - "3.5. Ignorer paquets bogues ICMP: {{ 'CONFORME' if check_icmp_bogus.stdout is defined and '1' in check_icmp_bogus.stdout else 'NON CONFORME' }}"
+          - "3.6. Reverse Path Filtering: {{ 'CONFORME' if check_rp_filter.stdout is defined and '1' in check_rp_filter.stdout else 'NON CONFORME' }}"
+          - "3.7. Cookies SYN activés: {{ 'CONFORME' if check_syncookies.stdout is defined and '1' in check_syncookies.stdout else 'NON CONFORME' }}"
+          - "3.8. IPv6 désactivé (si non utilisé): {{ 'CONFORME' if check_disable_ipv6.stdout is defined and '1' in check_disable_ipv6.stdout else 'NON CONFORME' }}"
+          - "3.9. TCP wrappers absent: {{ 'CONFORME' if check_tcpd.rc is defined and check_tcpd.rc != 0 else 'NON CONFORME' }}"
+          - "3.10. Redirections sécurisées désactivées: {{ 'CONFORME' if check_secure_redirects.stdout is defined and '0' in check_secure_redirects.stdout else 'NON CONFORME' }}"
+
+          # SECTION 4 - Logging & Auditing (10 règles)
+          - "4.1. Service auditd actif: {{ 'CONFORME' if check_auditd.stdout is defined and 'active' in check_auditd.stdout else 'NON CONFORME' }}"
+          - "4.2. Paquet rsyslog installé: {{ 'CONFORME' if check_rsyslog.rc is defined and check_rsyslog.rc == 0 else 'NON CONFORME' }}"
+          - "4.3. Service rsyslog démarré: {{ 'CONFORME' if check_rsyslog_service.stdout is defined and 'active' in check_rsyslog_service.stdout else 'NON CONFORME' }}"
+          - "4.4. Permissions fichiers de log: {{ 'CONFORME' if check_log_perms.stdout is defined and check_log_perms.stdout == '' else 'NON CONFORME' }}"
+          - "4.5. Logrotate actif: {{ 'CONFORME' if check_logrotate.stat is defined and check_logrotate.stat.exists else 'NON CONFORME' }}"
+          - "4.6. Journald persistant: {{ 'CONFORME' if check_journald.rc is defined and check_journald.rc == 0 else 'NON CONFORME' }}"
+          - "4.7. Auditd - espace saturé: {{ 'CONFORME' if check_auditd_space.rc is defined and check_auditd_space.rc == 0 else 'NON CONFORME' }}"
+          - "4.8. Auditd - admin plein: {{ 'CONFORME' if check_admin_space.rc is defined and check_admin_space.rc == 0 else 'NON CONFORME' }}"
+          - "4.9. Auditd - taille max logs: {{ 'CONFORME' if check_max_log.rc is defined and check_max_log.rc == 0 else 'NON CONFORME' }}"
+          - "4.10. Auditd - action mail: {{ 'CONFORME' if check_mail_acct.rc is defined and check_mail_acct.rc == 0 else 'NON CONFORME' }}"
+
+          # SECTION 5 - Contrôle d'accès & Mots de passe (10 règles)
+          - "5.1. Permissions /etc/crontab: {{ 'CONFORME' if stat_crontab.stat is defined and stat_crontab.stat.mode is defined and stat_crontab.stat.mode <= '0600' else 'NON CONFORME' }}"
+          - "5.2. Permissions /etc/cron.hourly: {{ 'CONFORME' if stat_cron_hourly.stat is defined and stat_cron_hourly.stat.mode is defined and stat_cron_hourly.stat.mode <= '0700' else 'NON CONFORME' }}"
+          - "5.3. Permissions /etc/cron.daily: {{ 'CONFORME' if stat_cron_daily.stat is defined and stat_cron_daily.stat.mode is defined and stat_cron_daily.stat.mode <= '0700' else 'NON CONFORME' }}"
+          - "5.4. Permissions /etc/cron.weekly: {{ 'CONFORME' if stat_cron_weekly.stat is defined and stat_cron_weekly.stat.mode is defined and stat_cron_weekly.stat.mode <= '0700' else 'NON CONFORME' }}"
+          - "5.5. Permissions /etc/cron.monthly: {{ 'CONFORME' if stat_cron_monthly.stat is defined and stat_cron_monthly.stat.mode is defined and stat_cron_monthly.stat.mode <= '0700' else 'NON CONFORME' }}"
+          - "5.6. Permissions /etc/cron.d: {{ 'CONFORME' if stat_cron_d.stat is defined and stat_cron_d.stat.mode is defined and stat_cron_d.stat.mode <= '0700' else 'NON CONFORME' }}"
+          - "5.7. Politique PASS_MAX_DAYS: {{ 'CONFORME' if check_pass_days.rc is defined and check_pass_days.rc == 0 else 'NON CONFORME' }}"
+          - "5.8. Politique PASS_MIN_DAYS: {{ 'CONFORME' if check_pass_min.rc is defined and check_pass_min.rc == 0 else 'NON CONFORME' }}"
+          - "5.9. Politique PASS_WARN_AGE: {{ 'CONFORME' if check_pass_warn.rc is defined and check_pass_warn.rc == 0 else 'NON CONFORME' }}"
+          - "5.10. Verrouillage comptes inactifs: {{ 'CONFORME' if check_inactive.rc is defined and check_inactive.rc == 0 else 'NON CONFORME' }}"
           - "============================================================"

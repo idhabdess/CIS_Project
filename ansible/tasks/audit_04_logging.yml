@@ -1,0 +1,49 @@
+---
+- name: "CIS 4.1 - Service auditd actif"
+  command: systemctl is-active auditd
+  register: check_auditd
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 4.2 - Paquet rsyslog installé"
+  shell: dpkg -l rsyslog | grep "^ii"
+  register: check_rsyslog
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 4.3 - Service rsyslog démarré"
+  command: systemctl is-active rsyslog
+  register: check_rsyslog_service
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 4.4 - Permissions des fichiers de log"
+  command: find /var/log -type f -perm /o+rwx
+  register: check_log_perms
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 4.5 - Configuration logrotate active"
+  stat: path=/etc/logrotate.conf
+  register: check_logrotate
+- name: "CIS 4.6 - Journald persiste les logs sur disque"
+  command: grep "^Storage=persistent" /etc/systemd/journald.conf
+  register: check_journald
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 4.7 - Auditd gère l'espace disque saturé"
+  command: grep "space_left_action" /etc/audit/auditd.conf
+  register: check_auditd_space
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 4.8 - Action sur disque admin plein"
+  command: grep "admin_space_left_action" /etc/audit/auditd.conf
+  register: check_admin_space
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 4.9 - Taille max des logs auditd"
+  command: grep "max_log_file" /etc/audit/auditd.conf
+  register: check_max_log
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 4.10 - Mode d'action si disque plein"
+  command: grep "action_mail_acct" /etc/audit/auditd.conf
+  register: check_mail_acct
+  ignore_errors: yes
+  changed_when: false

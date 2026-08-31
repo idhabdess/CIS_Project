@@ -1,0 +1,27 @@
+---
+- name: "Remédier 2.1 & 2.2 - Sécuriser les accès SSH"
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  loop:
+    - { regexp: '^#?PermitRootLogin', line: 'PermitRootLogin no' }
+    - { regexp: '^#?PermitEmptyPasswords', line: 'PermitEmptyPasswords no' }
+    - { regexp: '^#?ClientAliveInterval', line: 'ClientAliveInterval 300' }
+    - { regexp: '^#?MaxAuthTries', line: 'MaxAuthTries 4' }
+  notify: Redémarrer SSH
+
+- name: "Remédier 2.3 à 2.7 - Purger les paquets obsolètes/dangereux"
+  apt:
+    name: "{{ item }}"
+    state: absent
+    purge: yes
+  loop: [telnet, rsh-client, nis, ldap-utils, xinetd]
+  ignore_errors: yes
+
+- name: "Remédier 2.8 - Installer le protocole de temps (Chrony)"
+  apt:
+    name: chrony
+    state: present
+    update_cache: yes

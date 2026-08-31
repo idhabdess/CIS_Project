@@ -1,0 +1,39 @@
+---
+- name: "CIS 5.1 - Permissions /etc/crontab"
+  stat: path=/etc/crontab
+  register: stat_crontab
+- name: "CIS 5.2 - Permissions /etc/cron.hourly"
+  stat: path=/etc/cron.hourly
+  register: stat_cron_hourly
+- name: "CIS 5.3 - Permissions /etc/cron.daily"
+  stat: path=/etc/cron.daily
+  register: stat_cron_daily
+- name: "CIS 5.4 - Permissions /etc/cron.weekly"
+  stat: path=/etc/cron.weekly
+  register: stat_cron_weekly
+- name: "CIS 5.5 - Permissions /etc/cron.monthly"
+  stat: path=/etc/cron.monthly
+  register: stat_cron_monthly
+- name: "CIS 5.6 - Permissions /etc/cron.d"
+  stat: path=/etc/cron.d
+  register: stat_cron_d
+- name: "CIS 5.7 - Politique PASS_MAX_DAYS (<= 90)"
+  command: grep "^PASS_MAX_DAYS\s*90" /etc/login.defs
+  register: check_pass_days
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 5.8 - Politique PASS_MIN_DAYS (>= 7)"
+  command: grep "^PASS_MIN_DAYS\s*7" /etc/login.defs
+  register: check_pass_min
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 5.9 - Politique PASS_WARN_AGE (>= 7)"
+  command: grep "^PASS_WARN_AGE\s*7" /etc/login.defs
+  register: check_pass_warn
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 5.10 - Verrouillage des comptes inactifs"
+  shell: useradd -D | grep "INACTIVE"
+  register: check_inactive
+  ignore_errors: yes
+  changed_when: false

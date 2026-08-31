@@ -1,0 +1,51 @@
+---
+- name: "CIS 3.1 - Pare-feu UFW actif"
+  command: ufw status
+  register: check_ufw
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 3.2 - IP Forwarding désactivé"
+  command: sysctl net.ipv4.ip_forward
+  register: check_ip_forward
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 3.3 - Ignorer les redirections ICMP"
+  command: sysctl net.ipv4.conf.all.accept_redirects
+  register: check_accept_redirects
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 3.4 - Source Routing désactivé"
+  command: sysctl net.ipv4.conf.all.accept_source_route
+  register: check_source_route
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 3.5 - Ignorer les paquets bogues ICMP"
+  command: sysctl net.ipv4.icmp_ignore_bogus_error_responses
+  register: check_icmp_bogus
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 3.6 - Activer Reverse Path Filtering"
+  command: sysctl net.ipv4.conf.all.rp_filter
+  register: check_rp_filter
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 3.7 - Cookies SYN activés (Protection Flood)"
+  command: sysctl net.ipv4.tcp_syncookies
+  register: check_syncookies
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 3.8 - IPv6 désactivé si non utilisé"
+  command: sysctl net.ipv6.conf.all.disable_ipv6
+  register: check_disable_ipv6
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 3.9 - Paquet TCP wrappers absent"
+  command: dpkg -l tcpd | grep "^ii"
+  register: check_tcpd
+  ignore_errors: yes
+  changed_when: false
+- name: "CIS 3.10 - Désactiver les redirections sécurisées"
+  command: sysctl net.ipv4.conf.all.secure_redirects
+  register: check_secure_redirects
+  ignore_errors: yes
+  changed_when: false

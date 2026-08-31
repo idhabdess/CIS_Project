@@ -1,0 +1,32 @@
+---
+- name: "Remédier 4.1 & 4.2 - Installer auditd et rsyslog"
+  apt:
+    name: ['auditd', 'rsyslog']
+    state: present
+  ignore_errors: yes
+
+- name: "Activer les services de logging"
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  loop: ['auditd', 'rsyslog']
+  ignore_errors: yes
+
+- name: "Remédier 4.6 - Journald persistant"
+  lineinfile:
+    path: /etc/systemd/journald.conf
+    regexp: '^#?Storage'
+    line: 'Storage=persistent'
+    state: present
+  notify: Redémarrer Journald
+
+- name: "Remédier 4.2 - Forcer l'installation de rsyslog"
+  apt:
+    name: rsyslog
+    state: present
+    update_cache: yes
+
+- name: "Remédier 4.4 - Restreindre les permissions de tous les fichiers de log"
+  command: find /var/log -type f -exec chmod o-rwx {} +
+  ignore_errors: yes

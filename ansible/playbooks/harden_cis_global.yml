@@ -4,75 +4,27 @@
   become: yes
   tasks:
 
-    # 1. SSH PermitRootLogin -> no
-    - name: "Remédiation 1.1 - Désactiver le login root en SSH"
-      lineinfile:
-        path: /etc/ssh/sshd_config
-        regexp: '^#?PermitRootLogin'
-        line: 'PermitRootLogin no'
-        state: present
-        validate: /usr/sbin/sshd -t -f %s
-      notify: Redémarrer SSH
-    # 1. SSH PermitEmptyPasswords -> no
-    - name: "Remédiation 1.2 - Désactiver les mots de passe vides en SSH"
-      lineinfile:
-        path: /etc/ssh/sshd_config
-        regexp: '^#?PermitEmptyPasswords'
-        line: PermitEmptyPasswords no
-        state: present
-        validate: /usr/sbin/sshd -t -f %s
-      notify: Redémarrer SSH
+    - name: "Appliquer Section 1 - Setup"
+      include_tasks: ../tasks/harden_01_setup.yml
 
-    # 4. Permissions /etc/shadow -> 600 ou plus restrictif
-    - name: "Remédiation 1.4 - Sécuriser les permissions de /etc/shadow"
-      file:
-        path: /etc/shadow
-        mode: '0600'
-        owner: root
-        group: shadow
+    - name: "Appliquer Section 2 - Services"
+      include_tasks: ../tasks/harden_02_services.yml
 
-    # 5. Activer le pare-feu UFW
-    - name: "Remédiation 1.5 - Activer le pare-feu UFW"
-      ufw:
-        state: enabled
-        policy: deny
+    - name: "Appliquer Section 3 - Réseau"
+      include_tasks: ../tasks/harden_03_network.yml
 
-    # 6. Supprimer le paquet Telnet s'il est présent
-    - name: "Remédiation 1.6 - Désinstaller le paquet telnet"
-      apt:
-        name: telnet
-        state: absent
+    - name: "Appliquer Section 4 - Logging"
+      include_tasks: ../tasks/harden_04_logging.yml
 
-    # 7. Sécuriser les permissions de /etc/crontab
-    - name: "Remédiation 1.7 - Sécuriser les permissions de /etc/crontab"
-      file:
-        path: /etc/crontab
-        mode: '0600'
-        owner: root
-        group: root
-
-    # 8. Installer et démarrer le service auditd
-    - name: "Remédiation 1.8 - Installer et activer le service auditd"
-      apt:
-        name: auditd
-        state: present
-    - name: "Assurer que auditd est démarré et activé"
-      systemd:
-        name: auditd
-        state: started
-        enabled: yes
-
-    # 9. Corriger PASS_MAX_DAYS à 90 dans /etc/login.defs
-    - name: "Remédiation 1.9 - Configurer PASS_MAX_DAYS à 90"
-      lineinfile:
-        path: /etc/login.defs
-        regexp: '^PASS_MAX_DAYS'
-        line: 'PASS_MAX_DAYS   90'
-        state: present
+    - name: "Appliquer Section 5 - Accès"
+      include_tasks: ../tasks/harden_05_access.yml
 
   handlers:
     - name: Redémarrer SSH
       service:
         name: ssh
         state: restarted
-
+    - name: Redémarrer Journald
+      service:
+        name: systemd-journald
+        state: restarted
