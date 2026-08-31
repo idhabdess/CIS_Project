@@ -10,7 +10,6 @@ fi
 # 2. INSTALLATION SILENCIEUSE DES DÉPENDANCES
 echo "⚙️  Vérification et préparation de l'environnement..."
 
-# Dépendances système (APT)
 PACKAGES="whiptail ansible python3-pip python3-venv sshpass"
 for pkg in $PACKAGES; do
     if ! dpkg -l | grep -qw "$pkg"; then
@@ -20,39 +19,54 @@ for pkg in $PACKAGES; do
     fi
 done
 
-# Dépendances Python (PIP) pour l'API
-# On utilise --break-system-packages pour les distributions Ubuntu récentes ou on installe globalement si permis
 if ! pip3 show fastapi uvicorn pydantic > /dev/null 2>&1; then
     echo "   -> Installation des modules Python (FastAPI, Uvicorn)..."
     pip3 install -q fastapi uvicorn pydantic --break-system-packages > /dev/null 2>&1 || pip3 install -q fastapi uvicorn pydantic > /dev/null 2>&1
 fi
 
-echo "✅ Environnement prêt !"
-sleep 1
+# 3. CONFIGURATION DYNAMIQUE DES IDENTIFIANTS (INVENTORY.INI)
+USER_CIBLE=$(whiptail --title "Configuration de l'Agent" --inputbox "Entrez le nom d'utilisateur administrateur sur cette machine :" 10 60 "root" 3>&1 1>&2 2>&3)
+if [ $? -ne 0 ]; then clear; echo "Annulé."; exit 0; fi
 
-# 3. FONCTION DE LANCEMENT DE LA PLATEFORME WEB
-ouvrir_plateforme() {
-    if whiptail --title "Détails" --yesno "Voulez-vous démarrer l'interface web détaillée ?" 10 60; then
-        
-        # On tue les anciens processus Uvicorn s'ils existent pour éviter les conflits de port
-        pkill -f "uvicorn main:app" > /dev/null 2>&1
-        
-        # Lance FastAPI en arrière-plan
-        uvicorn main:app --port 8080 > /dev/null 2>&1 &
-        
-        whiptail --title "API Démarrée" --msgbox "L'agent tourne en arrière-plan.\n\nOuvrez un navigateur sur :\nhttp://127.0.0.1:8080" 10 50
-    fi
-}
+PASS_CIBLE=$(whiptail --title "Configuration de l'Agent" --passwordbox "Entrez le mot de passe sudo/root pour '$USER_CIBLE' :" 10 60 3>&1 1>&2 2>&3)
+if [ $? -ne 0 ]; then clear; echo "Annulé."; exit 0; fi
 
-# 4. MENU PRINCIPAL INTERACTIF (TUI)
+mkdir -p ansible
+cat << EOF > ansible/inventory.ini
+[servers]
+localhost ansible_connection=local ansible_user=$USER_CIBLE ansible_become_pass='$PASS_CIBLE'
+EOF
+
+echo "✅ Environnement et inventaire prêts !"
+
+# =================================================================
+# 4. ALLUMAGE AUTOMATIQUE DE LA PLATEFORME WEB EN ARRIÈRE-PLAN
+# =================================================================
+echo "🚀 Démarrage de l'interface Web..."
+pkill -f "uvicorn" > /dev/null 2>&1
+
+if [ -d "venv" ]; then
+    source venv/bin/activate
+fi
+
+# Lancement silencieux en arrière-plan (&)
+uvicorn backend.main:app --host 0.0.0.0 --port 8080 --reload > /dev/null 2>&1 &
+
+IP_SERVEUR=$(hostname -I | awk '{print $1}')
+[ -z "$IP_SERVEUR" ] && IP_SERVEUR="127.0.0.1"
+
+# Petite pause pour laisser le temps au serveur de démarrer
+sleep 2 
+
+# 5. MENU PRINCIPAL INTERACTIF (TUI)
 while true; do
-    CHOIX=$(whiptail --title "Agent de Sécurité CIS - Mode USB" --menu "Sélectionnez une action :" 15 60 4 \
-    "1" "🔍 Lancer l'Audit de sécurité" \
-    "2" "🛡️ Durcir le système (Remédiation)" \
-    "3" "↩️ Effectuer un Rollback" \
-    "4" "❌ Quitter" 3>&1 1>&2 2>&3)
+    CHOIX=$(whiptail --title "Agent de Sécurité CIS - Mode USB" --menu "Sélectionnez une action :" 16 70 5 \
+    "1" "🔍 Lancer l'Audit (Afficher la progression live)" \
+    "2" "🛡️ Durcir le système (Afficher la progression live)" \
+    "3" "↩️ Effectuer un Rollback (Afficher progression live)" \
+    "4" "🌐 Afficher les liens d'accès à l'Interface Web" \
+    "5" "❌ Quitter" 3>&1 1>&2 2>&3)
 
-    # Gestion de l'annulation (Bouton Cancel)
     if [ $? -ne 0 ]; then
         clear
         echo "Fermeture de l'agent USB."
@@ -61,22 +75,40 @@ while true; do
 
     case $CHOIX in
         1)
-            # Exécution de l'audit en mode silencieux et comptage
-            SCORE=$(ansible-playbook -i ansible/inventory.ini ansible/playbooks/audit_cis_global.yml --limit localhost | grep -c "CONFORME")
-            whiptail --title "Résultat de l'Audit" --msgbox "Audit terminé avec succès !\n\nScore de conformité : $SCORE / 50" 10 50
-            ouvrir_plateforme
+            clear
+            echo "================================================================"
+            echo " 🔍 Lancement de l'Audit de Sécurité CIS..."
+            echo "================================================================"
+            ansible-playbook -i ansible/inventory.ini ansible/playbooks/audit_cis_global.yml --limit localhost
+            echo ""
+            read -p "👉 Appuyez sur [Entrée] pour retourner au menu principal..."
             ;;
         2)
-            ansible-playbook -i ansible/inventory.ini ansible/playbooks/harden_cis_global.yml --limit localhost > /dev/null 2>&1
-            whiptail --title "Succès" --msgbox "Durcissement (Hardening) appliqué avec succès sur le système local." 8 50
+            clear
+            echo "================================================================"
+            echo " 🛡️ Application du Durcissement (Hardening)..."
+            echo "================================================================"
+            ansible-playbook -i ansible/inventory.ini ansible/playbooks/harden_cis_global.yml --limit localhost
+            echo ""
+            read -p "👉 Appuyez sur [Entrée] pour retourner au menu principal..."
             ;;
         3)
-            ansible-playbook -i ansible/inventory.ini ansible/playbooks/rollback_cis_global.yml --limit localhost > /dev/null 2>&1
-            whiptail --title "Succès" --msgbox "Restauration des paramètres par défaut terminée." 8 50
+            clear
+            echo "================================================================"
+            echo " ↩️ Restauration des paramètres (Rollback)..."
+            echo "================================================================"
+            ansible-playbook -i ansible/inventory.ini ansible/playbooks/rollback_cis_global.yml --limit localhost
+            echo ""
+            read -p "👉 Appuyez sur [Entrée] pour retourner au menu principal..."
             ;;
         4)
+            whiptail --title "Interface Web Active" --msgbox "L'API et le serveur web tournent déjà en arrière-plan.\n\n🌐 Accès direct sur cette machine :\nhttp://127.0.0.1:8080\n\n🌐 Accès depuis un autre poste du réseau :\nhttp://$IP_SERVEUR:8080" 13 65
+            ;;
+        5)
             clear
             echo "Fermeture de l'agent USB."
+            # Optionnel : Tuer le serveur web à la fermeture du menu si vous le souhaitez
+            # pkill -f "uvicorn" > /dev/null 2>&1
             exit 0
             ;;
     esac

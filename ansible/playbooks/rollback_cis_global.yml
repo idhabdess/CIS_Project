@@ -1,0 +1,33 @@
+---
+- name: Rollback CIS Global - Restauration du véritable état initial
+  hosts: all
+  become: yes
+  tasks:
+    - name: Vérifier si l'archive de sauvegarde initiale existe
+      stat:
+        path: /opt/cis_backup_initial.tar.gz
+      register: backup_file
+
+    - name: Arrêt immédiat si aucune sauvegarde n'est trouvée
+      fail:
+        msg: "Action annulée : Aucune sauvegarde trouvée dans /opt/cis_backup_initial.tar.gz. Le système n'a peut-être jamais été durci."
+      when: not backup_file.stat.exists
+
+    - name: Restaurer les fichiers d'origine depuis l'archive
+      command: tar -xzf /opt/cis_backup_initial.tar.gz -C /
+      notify:
+        - Redémarrer SSH
+        - Redémarrer Journald
+        - Recharger sysctl
+
+  handlers:
+    - name: Redémarrer SSH
+      service:
+        name: ssh
+        state: restarted
+    - name: Redémarrer Journald
+      service:
+        name: systemd-journald
+        state: restarted
+    - name: Recharger sysctl
+      command: sysctl --system
